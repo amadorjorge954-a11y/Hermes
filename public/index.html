@@ -208,7 +208,8 @@ const iniciales=n=>n.split(' ').map(w=>w[0]).slice(0,2).join('');
 const USERS=[
  ...RUTAS.map(r=>({id:'P'+r.id,n:r.vend,role:'preventa',rl:'Preventa',rid:r.id,ruta:'Ruta '+r.id,cedis:CONFIG.cedis,ant:'2 años',ini:iniciales(r.vend)})),
  ...RUTAS.map(r=>({id:'R'+r.id,n:r.rep,role:'reparto',rl:'Reparto',rid:r.id,ruta:'Ruta '+r.id,cedis:CONFIG.cedis,ant:'1 año 6 meses',ini:iniciales(r.rep)})),
- {id:'S1',n:'Ana Ruiz',role:'supervisor',rl:'Supervisora',ruta:'Rutas 101–108',cedis:CONFIG.cedis,ant:'5 años',ini:'AR'}
+ {id:'S1',n:'Ana Ruiz',role:'supervisor',rl:'Supervisora',ruta:'Rutas 101–108',cedis:CONFIG.cedis,ant:'5 años',ini:'AR'},
+ {id:'A1',n:'Administrador',role:'admin',rl:'Administrador',ruta:'Todas las rutas',cedis:CONFIG.cedis,ant:'—',ini:'AD'}
 ];
 const MOTIVOS_CAMBIO=['Caducado','Próximo a caducar','Dañado'];
 const MOTIVOS_SIN_VENTA=['Tiene inventario suficiente','Sin efectivo','Encargado ausente','Tienda cerrada'];
@@ -241,7 +242,7 @@ const P=id=>PRODUCTS.find(x=>x.id===+id);
 const CL=id=>CLIENTS.find(x=>x.id===id);
 const U=()=>USERS.find(u=>u.id===S.user);
 const RUTA=id=>RUTAS.find(r=>r.id===+id);
-function curRid(){const u=U();return u&&u.role==='supervisor'?UI.p.rid:u&&u.rid}
+function curRid(){const u=U();return u&&(u.role==='supervisor'||u.role==='admin')?UI.p.rid:u&&u.rid}
 const MYC=()=>CLIENTS.filter(c=>c.ruta===curRid());
 const MYO=()=>S.orders.filter(o=>o.ruta===curRid());
 function CG(){const r=curRid();if(!S.carga[r])S.carga[r]={confirmed:false,at:null,checked:{}};return S.carga[r]}
@@ -289,9 +290,10 @@ const IC={
 const NAVS={
  preventa:[['home','Mi día','home'],['ruta','Ruta','route'],['perfil','Perfil','user']],
  reparto:[['home','Mi día','home'],['carga','Carga','box'],['entregas','Entregas','truck'],['liq','Liquidación','cash'],['perfil','Perfil','user']],
- supervisor:[['home','Panel','chart'],['pedidos','Pedidos','list'],['perfil','Perfil','user']]
+ supervisor:[['home','Panel','chart'],['pedidos','Pedidos','list'],['perfil','Perfil','user']],
+ admin:[['home','Pedidos','list'],['perfil','Perfil','user']]
 };
-const NAVROOT={visita:'ruta',entrega:'entregas',srt:'home'};
+const NAVROOT={visita:'ruta',entrega:'entregas',srt:'home',aedit:'home'};
 
 // ---------------- RENDER ----------------
 function render(){
@@ -310,6 +312,10 @@ function render(){
     else if(v==='entregas'){title='Entregas';sub=u.ruta;body=rpEntregas()}
     else if(v==='entrega'){const o=S.orders.find(x=>x.id===UI.p.oid);title=CL(o.cid).n;sub=`Pedido ${o.id}`;back='entregas';body=rpEntrega(o)}
     else if(v==='liq'){title='Liquidación';sub=dateStr();body=rpLiq()}
+    else {title='Mi perfil';body=perfil()}
+  }else if(u.role==='admin'){
+    if(v==='home'){title='Administrar pedidos';sub=`${u.cedis} · ${dateStr()}`;body=adPedidos()}
+    else if(v==='aedit'){const o=S.orders.find(x=>x.id===UI.p.oid);title=`Pedido ${o.id}`;sub=`${CL(o.cid).n} · Ruta ${o.ruta}`;back='home';body=adEdit(o)}
     else {title='Mi perfil';body=perfil()}
   }else{
     if(v==='home'){title='Panel del equipo';sub=`${u.cedis} · ${RUTAS.length} rutas · ${dateStr()}`;body=spPanel()}
@@ -335,7 +341,7 @@ function render(){
 function loginView(){
   const pinBox=`<div class="pin"><input id="pin" type="password" inputmode="numeric" maxlength="4" placeholder="PIN" onkeydown="if(event.key==='Enter')doLogin()"></div>
       <div class="err">${UI.pinErr}</div><button class="btn" onclick="doLogin()" style="margin-bottom:12px">Iniciar sesión</button>`;
-  const roles=[['preventa','Preventa'],['reparto','Reparto'],['supervisor','Supervisor']];
+  const roles=[['preventa','Preventa'],['reparto','Reparto'],['supervisor','Supervisor'],['admin','Admin']];
   const tabs=`<div class="seg" style="margin:0 0 12px">${roles.map(([k,l])=>`<button class="${UI.loginRole===k?'on':''}" onclick="UI.loginRole='${k}';UI.pinUser=null;render()">${l}</button>`).join('')}</div>`;
   const cards=tabs+USERS.filter(u=>u.role===UI.loginRole).map(u=>`<div class="ucard ${UI.pinUser===u.id?'sel':''}" onclick="pickUser('${u.id}')">
      <div class="av">${u.ini}</div><div class="grow"><div class="nm">${u.n}</div><div class="sm">${u.rl}${u.rid?' · '+RUTA(u.rid).zona:''}</div></div>
@@ -511,7 +517,7 @@ function ticketText(o){
   return [ '              VITERE',`     ${CONFIG.cedis} · Ruta ${o.ruta}`,L,
    `Ticket: ${o.id}`,`Fecha: ${o.fecha==='Hoy'?dateStr():'Ayer'} ${o.hora}`,`Cliente: ${c.n}`,`Vendedor: ${o.vend}`,L,
    'CANT PRODUCTO              IMPORTE',...lines,L,`TOTAL${padl(money(o.total),29)}`,
-   camb?`Cambios por caducidad: ${camb} pzas`:'Sin cambios por caducidad',L,
+   camb?`Cambios por caducidad: ${camb} pzas`:'Sin cambios por caducidad',...(o.ediciones&&o.ediciones.length?[`Modificado por administrador (${o.ediciones.length})`]:[]),L,
    `Entrega: ${o.fecha==='Hoy'?dateStr(1):dateStr()}`,'Pago de contado contra entrega','','     Gracias por su preferencia'].join('\n');
 }
 async function copyTicket(oid){const o=S.orders.find(x=>x.id===oid);try{await navigator.clipboard.writeText(ticketText(o));toast('Ticket copiado')}catch(e){toast('No se pudo copiar en este navegador')}}
@@ -547,7 +553,7 @@ function cargaLines(){
 }
 function rpCarga(){
   const lines=cargaLines();
-  if(CG().confirmed)return `<div class="note ok">Carga confirmada a las ${CG().at}.</div>
+  if(CG().confirmed)return `${CG().aviso?'<div class="note warn">El administrador modificó pedidos después de confirmar la carga. Revisa las cantidades en cada entrega.</div>':''}<div class="note ok">Carga confirmada a las ${CG().at}.</div>
     <div class="sm" style="margin-bottom:10px">Si se levantan pedidos nuevos después de confirmar, aparecen directo en Entregas.</div><button class="btn" onclick="go('entregas')">Ir a entregas</button>`;
   if(!lines.length)return `<div class="empty">No hay pedidos por cargar.</div>`;
   const allOk=lines.every(([k])=>CG().checked[k]);
@@ -677,12 +683,58 @@ function spPedidos(){
     <div class="right"><div class="nm">${money0(o.total)}</div>${o.status==='entregado'?'<span class="chip ok">Entregado</span>':'<span class="chip">Por entregar</span>'}</div></div>`}).join('')||'<div class="empty">Sin pedidos.</div>';
 }
 
+// ---------------- ADMINISTRADOR ----------------
+function isAdmin(){const u=U();return !!u&&u.role==='admin'}
+function adPedidos(){
+  const f=UI.af||(UI.af={ruta:'',st:'por_entregar'});
+  const os=S.orders.filter(o=>(!f.ruta||o.ruta==f.ruta)&&(!f.st||o.status===f.st)).slice().reverse();
+  return `<div class="note">Solo el administrador puede modificar pedidos. Los pedidos entregados ya no se pueden cambiar.</div>
+   <div class="filters">${[['','Todas'],...RUTAS.map(r=>[String(r.id),'Ruta '+r.id])].map(([k,l])=>`<button class="${f.ruta===k?'on':''}" onclick="UI.af.ruta='${k}';render()">${l}</button>`).join('')}</div>
+   <div class="seg" style="margin-bottom:12px">${[['por_entregar','Por entregar'],['entregado','Entregados'],['','Todos']].map(([k,l])=>`<button class="${f.st===k?'on':''}" onclick="UI.af.st='${k}';render()">${l}</button>`).join('')}</div>
+   ${os.map(o=>{const c=CL(o.cid);const ed=o.ediciones&&o.ediciones.length;return `<div class="li tap" onclick="openAdmin('${o.id}')"><div class="grow"><div class="nm">${c.n}</div><div class="sm">Ruta ${o.ruta} · ${o.id} · ${o.vend}</div><div class="sm">Levantado ${o.fecha.toLowerCase()} ${o.hora}</div>${ed?'<span class="chip acc" style="margin-top:4px">Modificado</span>':''}</div>
+     <div class="right"><div class="nm">${money0(o.total)}</div>${o.status==='entregado'?'<span class="chip ok">Entregado</span>':'<span class="chip">Por entregar</span>'}</div></div>`}).join('')||'<div class="empty">Sin pedidos con este filtro.</div>'}`;
+}
+function openAdmin(oid){if(!isAdmin())return;const o=S.orders.find(x=>x.id===oid);UI.ed={oid,items:{...o.items}};go('aedit',{oid})}
+function adEdit(o){
+  const c=CL(o.cid),locked=o.status==='entregado';
+  if(!UI.ed||UI.ed.oid!==o.id)UI.ed={oid:o.id,items:{...o.items}};
+  const it=UI.ed.items,tot=cartTotal(it,c.region),orig=o.total,diff=tot-orig;
+  const changed=JSON.stringify(Object.entries(it).filter(([,q])=>q>0).sort())!==JSON.stringify(Object.entries(o.items).sort());
+  const opts=PRODUCTS.filter(p=>!it[p.id]).map(p=>`<option value="${p.id}">${p.n} · ${money(price(p.id,c.region))}</option>`).join('');
+  const rows=Object.entries(it).map(([k,q])=>`<div class="li" style="padding:9px"><div class="grow"><div class="nm" style="font-size:13.5px">${P(k).n}</div><div class="sm">${money(price(+k,c.region))} c/u${o.items[k]!==q?` · antes ${o.items[k]||0}`:''}</div></div>
+     ${locked?`<b>${q}</b>`:`<div class="stepper"><button onclick="adQty(${k},-1)">−</button><span>${q}</span><button onclick="adQty(${k},1)">+</button></div><button class="btn sm ghost" style="margin-left:6px" onclick="adDel(${k})">Quitar</button>`}</div>`).join('');
+  const hist=(o.ediciones||[]).slice().reverse().map(e=>`<div class="sm" style="color:var(--txt);margin:4px 0">${e.hora} · ${e.por}: ${money(e.antes)} → ${money(e.despues)}${e.detalle?' · '+e.detalle:''}</div>`).join('');
+  return `${locked?'<div class="note warn">Este pedido ya fue entregado y cobrado; no se puede modificar.</div>':''}
+   <div class="card"><div class="kv"><div>Cliente</div><div>${c.n}</div><div>Ruta</div><div>${o.ruta}</div><div>Vendedor</div><div>${o.vend}</div><div>Estado</div><div>${o.status==='entregado'?'Entregado':'Por entregar'}</div></div></div>
+   <div class="card"><h4>Productos (${cartPzas(it)} pzas)</h4>${rows||'<div class="sm">El pedido no tiene productos.</div>'}
+     ${locked?'':`<div class="form" style="margin-top:6px"><label>Agregar producto</label><select id="ad_sku">${opts}</select><label>Piezas</label><input id="ad_q" type="number" min="1" value="6"><button class="btn sec mt" onclick="adAdd()">Agregar al pedido</button></div>`}</div>
+   <div class="card"><div class="kv"><div>Total original</div><div>${money(orig)}</div><div>Total nuevo</div><div>${money(tot)}</div><div>Diferencia</div><div style="color:${diff<0?'var(--bad)':diff>0?'var(--ok)':'inherit'}">${diff===0?money(0):(diff>0?'+':'-')+money(Math.abs(diff))}</div></div>
+     ${tot<MIN_PEDIDO&&tot>0?`<div class="note warn" style="margin:8px 0 0">El total queda por debajo del pedido mínimo de ${money0(MIN_PEDIDO)}.</div>`:''}</div>
+   ${locked?'':`<button class="btn" ${changed&&cartPzas(it)>0?'':'disabled'} onclick="adSave()">Guardar cambios</button>
+     <button class="btn ghost mt" onclick="UI.ed=null;go('home')">Descartar</button>`}
+   ${hist?`<div class="card mt"><h4>Historial de cambios</h4>${hist}</div>`:''}`;
+}
+function adQty(k,d){if(!isAdmin())return;const it=UI.ed.items;it[k]=Math.max(1,(it[k]||0)+d);keepScroll()}
+function adDel(k){if(!isAdmin())return;delete UI.ed.items[k];keepScroll()}
+function adAdd(){if(!isAdmin())return;const sku=+document.getElementById('ad_sku').value,q=Math.max(1,parseInt(document.getElementById('ad_q').value)||1);if(!sku)return;UI.ed.items[sku]=(UI.ed.items[sku]||0)+q;keepScroll()}
+function adSave(){
+  if(!isAdmin())return;const o=S.orders.find(x=>x.id===UI.ed.oid);if(!o||o.status==='entregado')return;
+  const c=CL(o.cid),antes=o.total,nuevo={};for(const [k,q] of Object.entries(UI.ed.items))if(q>0)nuevo[k]=q;
+  const quitados=Object.keys(o.items).filter(k=>!nuevo[k]).map(k=>P(k).n),agregados=Object.keys(nuevo).filter(k=>!o.items[k]).map(k=>P(k).n);
+  const detalle=[agregados.length?'agregó '+agregados.join(', '):'',quitados.length?'quitó '+quitados.join(', '):''].filter(Boolean).join('; ')||'ajustó cantidades';
+  o.items=nuevo;o.total=cartTotal(nuevo,c.region);delete o.draft;
+  (o.ediciones=o.ediciones||[]).push({por:U().n,hora:nowStr(),antes,despues:o.total,detalle});
+  const cg=S.carga[o.ruta];if(cg&&cg.confirmed)cg.aviso=true;
+  save();UI.ed=null;toast('Pedido actualizado');go('aedit',{oid:o.id});
+}
+
 // ---------------- PERFIL ----------------
 function perfil(){
   const u=U();
   const metas={preventa:[['Venta mensual','$264,000','71%'],['Cobertura de ruta','95%','92%'],['Esenciales colocados','90%','84%']],
     reparto:[['Entregas a tiempo','98%','96%'],['Cuadre de caja sin diferencias','100%','100%'],['Cambios realizados','100%','94%']],
-    supervisor:[['Venta del CEDIS','$2.1 M','68%'],['Cobertura promedio','95%','90%'],['Rutas con liquidación cerrada','100%','97%']]}[u.role];
+    supervisor:[['Venta del CEDIS','$2.1 M','68%'],['Cobertura promedio','95%','90%'],['Rutas con liquidación cerrada','100%','97%']],
+    admin:[['Pedidos editados hoy','—',String(S.orders.filter(o=>o.ediciones&&o.ediciones.length).length)]]}[u.role];
   const sem=[82,88,91,86];
   return `<div class="card" style="display:flex;gap:14px;align-items:center"><div class="av" style="width:56px;height:56px;font-size:18px">${u.ini}</div>
      <div><div class="nm" style="font-size:17px">${u.n}</div><div class="sm">${u.rl} · ${u.ruta}</div><div class="sm">${u.cedis} · Antigüedad ${u.ant}</div></div></div>
